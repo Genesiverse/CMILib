@@ -8,8 +8,12 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Material;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.block.CreatureSpawner;
@@ -25,6 +29,7 @@ import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.potion.PotionData;
@@ -45,14 +50,17 @@ import net.Zrips.CMILib.Recipes.CMIRecipeIngredient;
 import net.Zrips.CMILib.Version.Version;
 
 public class CMIItemStack {
-
+    private static final Cache<Material, UnoHologramData> itemCache = CacheBuilder.newBuilder()
+            .concurrencyLevel(4)
+            .maximumSize(3000)
+            .expireAfterWrite(35, TimeUnit.MINUTES)
+            .build();
     @Deprecated
     private int id = 0;
     @Deprecated
     private short data = 0;
     private short durability = 0;
     private int amount = 0;
-
     private String bukkitName = null;
     private String mojangName = null;
     private CMIMaterial cmiMaterial = null;
@@ -83,6 +91,7 @@ public class CMIItemStack {
         CMIItemStack cm = new CMIItemStack(material);
         cm.entityType = this.entityType;
         cm.setId(id);
+
         cm.setData(data);
         cm.setAmount(amount);
         cm.setDurability(durability);
@@ -408,7 +417,14 @@ public class CMIItemStack {
             }
         } else {
             if (Version.isCurrentEqualOrHigher(Version.v1_13_R1)) {
-                this.item = this.item == null ? new ItemStack(this.getType()) : this.item;
+                if (itemCache.containsKey(this.getType())) {
+                    final UnoHologramData data = itemCache.get(this.getType());
+                    this.item = new ItemStack(data.getMaterial());
+                    updateLeatherHorseArmor(data);
+                } else {
+                    this.item = this.item == null ? new ItemStack(this.getType()) : this.item;
+                }
+
                 this.item.setAmount(this.getAmount());
                 if (this.getType().equals(CMIMaterial.SPAWNER.getMaterial())) {
                     if (this.getEntityType() != null) {
@@ -474,6 +490,19 @@ public class CMIItemStack {
         return item;
     }
 
+
+    public void updateLeatherHorseArmor(final UnoHologramData data) {
+        if (this.item != null && this.item.getItemMeta() instanceof LeatherArmorMeta) {
+            final LeatherArmorMeta meta = (LeatherArmorMeta) this.item.getItemMeta();
+            final Color color = data.getColor();
+            final Integer modelData = data.customModelData;
+            meta.setCustomModelData(modelData);
+            meta.setColor(color);
+
+            this.item.setItemMeta(meta);
+        }
+    }
+
     private void applyEntityType() {
 
         if (!CMIMaterial.SPAWNER.equals(getCMIType()))
@@ -493,7 +522,15 @@ public class CMIItemStack {
 
     @SuppressWarnings("deprecation")
     public CMIItemStack setItemStack(ItemStack item) {
-        this.item = item;
+        if (itemCache.containsKey(this.getType())) {
+            final UnoHologramData data = itemCache.get(this.getType());
+            this.item = new ItemStack(data.getMaterial());
+            updateLeatherHorseArmor(data);
+            return this;
+        } else {
+            this.item = item;
+        }
+
         if (item == null)
             return this;
 
@@ -667,7 +704,6 @@ public class CMIItemStack {
     }
 
     public EntityType getEntityType() {
-
         if (this.getItemStack() == null)
             return null;
 
@@ -1063,5 +1099,42 @@ public class CMIItemStack {
         }
 
         return (ItemStack) new CMINBT(item).setByte("Unbreakable", (byte) (state ? 1 : 0));
+    }
+
+
+    public static class UnoHologramData {
+        private int customModelData;
+        private Material material;
+        private Color color;
+
+        public UnoHologramData(int customModelData, Color color, Material material) {
+            this.customModelData = customModelData;
+            this.material = material;
+            this.color = color;
+        }
+
+        public int getCustomModelData() {
+            return customModelData;
+        }
+
+        public void setCustomModelData(int customModelData) {
+            this.customModelData = customModelData;
+        }
+
+        public Color getColor() {
+            return color;
+        }
+
+        public void setColor(Color color) {
+            this.color = color;
+        }
+
+        public Material getMaterial() {
+            return material;
+        }
+
+        public void setMaterial(Material material) {
+            this.material = material;
+        }
     }
 }

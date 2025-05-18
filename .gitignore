@@ -6,3 +6,6 @@
 /.classpath
 /.project
 /.codetogether.ignore
+CMILib.iml
+.idea
+.settings
